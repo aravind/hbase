@@ -1167,37 +1167,50 @@ public class AssignmentManager extends ZooKeeperListener {
   RegionPlan getRegionPlan(final RegionState state,
       final HServerInfo serverToExclude, final boolean forceNewPlan) {
     // Pickup existing plan or make a new one
-    String encodedName = state.getRegion().getEncodedName();
-    List<HServerInfo> servers = this.serverManager.getOnlineServersList();
-    // The remove below hinges on the fact that the call to
-    // serverManager.getOnlineServersList() returns a copy
+    final String encodedName = state.getRegion().getEncodedName();
+    final List<HServerInfo> servers = this.serverManager.getOnlineServersList();
+    final List<HServerInfo> drainingServers = this.serverManager.getDrainingServersList();
+
     if (serverToExclude != null) servers.remove(serverToExclude);
+    // Loop through the draining server list and remove them from the
+    // server list.
+    if (!drainingServers.isEmpty()) {
+      for (final HServerInfo server: drainingServers) {
+        LOG.debug("Removing server: " + server + " from eligible server pool.");
+        servers.remove(server);
+      }
+    }
+
     if (servers.isEmpty()) return null;
-    RegionPlan randomPlan = new RegionPlan(state.getRegion(), null,
+
+    final RegionPlan randomPlan = new RegionPlan(state.getRegion(), null,
       LoadBalancer.randomAssignment(servers));
     boolean newPlan = false;
     RegionPlan existingPlan = null;
+
     synchronized (this.regionPlans) {
       existingPlan = this.regionPlans.get(encodedName);
-      if (forceNewPlan || existingPlan == null 
-              || existingPlan.getDestination() == null 
-              || existingPlan.getDestination().equals(serverToExclude)) {
+      if (forceNewPlan
+          || existingPlan == null
+          || existingPlan.getDestination() == null
+          || drainingServers.contains(existingPlan.getDestination())) {
         newPlan = true;
         this.regionPlans.put(encodedName, randomPlan);
       }
     }
+
     if (newPlan) {
       debugLog(state.getRegion(), "No previous transition plan was found (or we are ignoring " +
         "an existing plan) for " + state.getRegion().getRegionNameAsString() +
         " so generated a random one; " + randomPlan + "; " +
         serverManager.countOfRegionServers() +
         " (online=" + serverManager.getOnlineServers().size() +
-        ", exclude=" + serverToExclude + ") available servers");
+        ", exclude=" + drainingServers + ") available servers");
         return randomPlan;
       }
-      debugLog(state.getRegion(), "Using pre-existing plan for region " +
-        state.getRegion().getRegionNameAsString() + "; plan=" + existingPlan);
-      return existingPlan;
+    debugLog(state.getRegion(), "Using pre-existing plan for region " +
+             state.getRegion().getRegionNameAsString() + "; plan=" + existingPlan);
+    return existingPlan;
   }
 
   /**

@@ -82,6 +82,12 @@ public class ServerManager {
   private final Map<String, HRegionInterface> serverConnections =
     new HashMap<String, HRegionInterface>();
 
+  /** Map of region servers that should not get any more new regions.  This
+   * is a map of Server Names (host,port,startcode) --> Server Info.
+   */
+  private final Map<String, HServerInfo> drainingServers =
+    new ConcurrentHashMap<String, HServerInfo>();
+
   private final Server master;
   private final MasterServices services;
   private final HConnection connection;
@@ -549,6 +555,40 @@ public class ServerManager {
         carryingRoot + ", meta=" + carryingMeta);
   }
 
+  /*
+   * Remove the server from the drain list.
+   */
+  public void removeServerFromDrainList(final String serverName) {
+    // Warn if the server (serverName) is not online.  ServerName is of the
+    // form: <hostname> , <port> , <startcode>
+    final HServerInfo info = this.onlineServers.get(serverName);
+
+    if (info == null)
+      LOG.warn("Server " + serverName + " is not currently online. " +
+               "Removing from draining list anyway, as requested.");
+    // Remove the server from the draining servers lists.
+    this.drainingServers.remove(serverName);
+    return;
+  }
+
+  /*
+   * Add the server to the drain list.
+   */
+  public void addServerToDrainList(final String serverName) {
+    // Ignore if server (serverName) is not online.  ServerName is of the
+    // form: <hostname> , <port> , <startcode>
+    final HServerInfo info = this.onlineServers.get(serverName);
+
+    if (info == null) {
+      LOG.warn("Server " + serverName + " is not currently online. " +
+               "Ignoring request to add it to draining list.");
+      return;
+    }
+    // Add the server to the draining servers lists.
+    this.drainingServers.put(serverName, info);
+    return;
+  }
+
   // RPC methods to region servers
 
   /**
@@ -692,6 +732,13 @@ public class ServerManager {
   public List<HServerInfo> getOnlineServersList() {
     // TODO: optimize the load balancer call so we don't need to make a new list
     return new ArrayList<HServerInfo>(onlineServers.values());
+  }
+
+  /**
+   * @return A copy of the internal list of draining servers.
+   */
+  public List<HServerInfo> getDrainingServersList() {
+    return new ArrayList<HServerInfo>(drainingServers.values());
   }
 
   public boolean isServerOnline(String serverName) {

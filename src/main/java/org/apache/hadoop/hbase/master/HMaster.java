@@ -83,6 +83,7 @@ import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
 import org.apache.hadoop.hbase.zookeeper.RegionServerTracker;
+import org.apache.hadoop.hbase.zookeeper.DrainingServerTracker;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.Text;
@@ -126,6 +127,8 @@ implements HMasterInterface, HMasterRegionInterface, MasterServices, Server {
   private ActiveMasterManager activeMasterManager;
   // Region server tracker
   private RegionServerTracker regionServerTracker;
+  // Draining region server tracker
+  private DrainingServerTracker drainingServerTracker;
 
   // RPC server for the HMaster
   private final HBaseServer rpcServer;
@@ -356,6 +359,10 @@ implements HMasterInterface, HMasterRegionInterface, MasterServices, Server {
     this.regionServerTracker = new RegionServerTracker(zooKeeper, this,
       this.serverManager);
     this.regionServerTracker.start();
+
+    this.drainingServerTracker = new DrainingServerTracker(zooKeeper, this,
+      this.serverManager);
+    this.drainingServerTracker.start();
 
     // Set the cluster as up.  If new RSs, they'll be waiting on this before
     // going ahead with their startup.
